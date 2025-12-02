@@ -6,14 +6,14 @@ on:
 
 jobs:
   build-test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '20'
 
@@ -26,27 +26,21 @@ jobs:
 
   deploy:
     needs: build-test
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
     - name: Checkout Repo
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
-    - name: Copy SSH Key
+    - name: Deploy Application
       run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-        chmod 600 ~/.ssh/deploy_key
+        cd ~/apps/myapp
+        
+        echo "Pulling latest changes..."
+        git pull origin main
 
-    - name: Add Server to Known Hosts
-      run: |
-        ssh-keyscan -p ${{ secrets.PORT }} ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+        echo "Installing dependencies..."
+        npm install
 
-    - name: Deploy via SSH
-      run: |
-        ssh -i ~/.ssh/deploy_key -p ${{ secrets.PORT }} ${{ secrets.USERNAME }}@${{ secrets.HOST }} "
-          cd ~/apps/myapp || exit
-          git pull origin main
-          npm install
-          pm2 restart myapp || pm2 start server.js --name myapp
-        "
+        echo "Restarting PM2 app..."
+        pm2 restart myapp || pm2 start server.js --name myapp
