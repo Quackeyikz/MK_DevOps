@@ -1,0 +1,55 @@
+kind: pipeline
+type: docker
+name: ci-cd-level1
+
+trigger:
+  branch:
+    - main
+  event:
+    - push
+
+steps:
+  - name: build-image
+    image: docker:dind
+    privileged: true
+    commands:
+      - docker build -t ${DRONE_REPO}:${DRONE_COMMIT_SHA} .
+
+  - name: publish-image
+    image: docker:dind
+    privileged: true
+    environment:
+      DOCKER_USERNAME:
+        from_secret: docker_username
+      DOCKER_PASSWORD:
+        from_secret: docker_password
+    commands:
+      - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+      - docker push ${DRONE_REPO}:${DRONE_COMMIT_SHA}
+
+  - name: deploy-to-k8s
+    image: bitnami/kubectl:latest
+    environment:
+      KUBE_TOKEN:
+        from_secret: KUBE_TOKEN
+      KUBE_SERVER:
+        from_secret: KUBE_SERVER
+    commands:
+      - |
+        kubectl config set-cluster cluster-dev \
+          --server=$KUBE_SERVER \
+          --insecure-skip-tls-verify=true
+
+        kubectl config set-credentials drone \
+          --token=$KUBE_TOKEN
+
+        kubectl config set-context dev \
+          --cluster=cluster-dev \
+          --user=drone \
+          --namespace=dev
+
+        kubectl config use-context dev
+
+        # Buat deployment jika belum ada
+        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/service.yaml
